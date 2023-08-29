@@ -27,8 +27,8 @@ def run_md(N, size, T, step, delta_step, dt):
     eps_oo = 0.155  # kcal/mol
     
     # Define Lennard-Jones parameters for oxygen-hydrogen interaction
-    sigma_oh = 3.153  # Angstrom
-    eps_oh = 0.100  # kcal/mol
+    sigma_oh = 0.0  # Angstrom
+    eps_oh = 0.0  # kcal/mol
 
     # Open trajectory file
     file = open("traj_MD.xyz", 'w')
