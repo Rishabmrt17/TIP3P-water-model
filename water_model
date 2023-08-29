@@ -1,0 +1,273 @@
+import numpy as np
+
+def run_md(N, size, T, step, delta_step, dt):
+    """
+    MD program using leap-frog algorithm for TIP3P water model
+    N = number_of_water_molecules
+    size = size_of_the_box
+    T = temperature
+    step = number_of_steps
+    delta_step = frequency_in_steps
+    dt = time_step
+    """
+    kB = 0.00198 # kcal/mol/K
+    # Define particle masses and charges
+    m_oxygen = 15.994  # Oxygen mass (amu)
+    m_hydrogen = 1.008  # Hydrogen mass (amu)
+    m = 17.002 # mass of water (amu)
+    q_oxygen = -0.834  # Oxygen charge (e)
+    q_hydrogen = 0.417  # Hydrogen charge (e)
+
+    # Define harmonic bond constants
+    kbond = 450 #kcal/mole/Å**2
+    req = 0.9572 #Angstrom
+  
+    # Define Lennard-Jones parameters for oxygen-oxygen interaction
+    sigma_oo = 3.166  # Angstrom
+    eps_oo = 0.155  # kcal/mol
+    
+    # Define Lennard-Jones parameters for oxygen-hydrogen interaction
+    sigma_oh = 3.153  # Angstrom
+    eps_oh = 0.100  # kcal/mol
+
+    # Open trajectory file
+    file = open("traj_MD.xyz", 'w')
+    vel_file = open("vel_MD.xyz", 'w')
+
+    # Initialize positions
+    positions = initialize_positions(N, size)
+    # Initialize velocities
+    velocities = initialize_velocities(N, kB, T, m)
+    # Main MD loop
+    for steps in range(step):
+        # Compute Bonded Forces and Energy
+        bond_energy_oh1, bond_energy_oh2, bond_force_oh1, bond_force_oh2 = compute_bonded_forces_energy(positions, kbond, req, size)
+
+        # Compute Non-bonded Forces and Energy
+        lj_energy, coulomb_energy, lj_force, coulomb_force = compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size)
+
+        # Compute Total Forces
+        forces = tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force)
+        
+        #Compute Total Energy
+        totEnergy = tot_energy(velocities, m, bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy)
+        
+        # Propagate Positions and Velocities
+        positions, velocities = leap_frog(positions, velocities, forces, m, dt, size)
+ 
+        if steps % delta_step == 0:
+            write_trajectory_frame(positions, file, step)
+            write_trajectory_frame(velocities, vel_file, step)
+
+    # Close trajectory file
+    file.close() 
+    vel_file.close()
+
+
+######Sub-Routines########
+
+# Initialize positions for TIP3P water molecules
+def initialize_positions(N, size):
+    """
+    Initialize positions for TIP3P water model
+    """
+    bond_length_OH = 0.9572  # Oxygen-Hydrogen bond length (Angstrom)
+    bond_angle_HOH = 104.52  # Oxygen-Hydrogen-Oxygen bond angle (degrees)
+
+    positions = np.zeros((N * 3, 3))  # Initialize with shape (N * 3, 3)
+    
+    for i in range(N):
+        oxygen_position = np.array([0.0, 0.0, 0.0])
+        hydrogen_position1 = np.array([bond_length_OH, 0.0, 0.0])
+
+        # Calculate position of hydrogen atom 2 using bond angle and bond length
+        angle_rad = np.radians(bond_angle_HOH)
+        x_hydrogen_2 = bond_length_OH * np.cos(angle_rad)
+        y_hydrogen_2 = bond_length_OH * np.sin(angle_rad)
+        hydrogen_position2 = np.array([x_hydrogen_2, y_hydrogen_2, 0.0])
+
+        # Assign calculated positions to the corresponding indices in the 'positions' array
+        positions[i * 3] = oxygen_position
+        positions[i * 3 + 1] = hydrogen_position1
+        positions[i * 3 + 2] = hydrogen_position2
+         
+    #print(positions)
+    return positions
+
+# Initialize velocities for TIP3P water molecules
+def initialize_velocities(N, kB, T, m):
+    """
+    Initialize velocities for TIP3P water molecules
+    kB = boltzmann_constant
+    m = mass_of_water
+    """
+    velocities = np.random.normal(loc=0, scale=1, size=(N * 3, 3)) * np.sqrt(kB * T / m)
+    #print(velocities)
+    return velocities
+
+
+# Compute separation vector 
+def compute_separation_vector_pbc(p1, p2, size):
+    """
+    Compute separation vector considering periodic boundary conditions
+    p1   -   position of particle 1
+    p2   -   position of particle 2
+    size -   linear box dimension
+
+    """
+    
+    dim = p1.shape[0]
+    separation_vector = p1-p2
+    for i in range(dim):
+        if separation_vector[i] > 0.5*size:
+           separation_vector[i] -= size
+        elif separation_vector[i] < -0.5*size:
+             separation_vector[i] += size
+    #separation_vector = separation_vector - np.round(separation_vector / size) * size
+    #print(separation_vector)
+    return separation_vector
+
+def compute_bonded_forces_energy(positions, kbond, req, size):
+    """
+    Compute bonded forces and energy for TIP3P water model
+    """
+    # retrieve meta data
+    N = positions.shape[0] 
+    # Initialize bonded energy
+    bonded_energy = 0
+    # Loop over water molecules
+    for i in range(0, N, 3):
+        # Calculate separation vectors between oxygen and hydrogen atoms
+        separation_vector_oh1 = compute_separation_vector_pbc(positions[i], positions[i + 1], size)
+        separation_vector_oh2 = compute_separation_vector_pbc(positions[i + 1], positions[i + 2], size)
+
+        # Calculate bond lengths
+        bond_length_oh1 = np.linalg.norm(separation_vector_oh1)
+        bond_length_oh2 = np.linalg.norm(separation_vector_oh2)
+
+        # Calculate harmonic bond potential energy
+        bond_energy_oh1 = 0.5 * kbond * (bond_length_oh1 - req) ** 2
+        bond_energy_oh2 = 0.5 * kbond * (bond_length_oh2 - req) ** 2
+
+
+        # Calculate derivative of bond energy with respect to bond length (bond force)
+        bond_force_oh1 = -kbond * (bond_length_oh1 - req) * separation_vector_oh1 / bond_length_oh1
+        bond_force_oh2 = -kbond * (bond_length_oh2 - req) * separation_vector_oh2 / bond_length_oh2
+
+    #print(bond_force_oh1, bond_force_oh2)
+    #print(bond_energy_oh1, bond_energy_oh2)
+    return(bond_energy_oh1, bond_energy_oh2, bond_force_oh1, bond_force_oh2)
+
+
+def compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size):
+    """
+    Compute non-bonded LJ and Coulombic force array
+    """
+    # retrieve meta data
+    N = positions.shape[0]
+    # Declare the zeroed force array
+    lj_force = np.zeros((N, 3))
+    coulomb_force = np.zeros((N,3))
+    # Initialize non-bonded energy
+    lj_energy = np.zeros((N,3))
+    coulomb_energy = np.zeros((	N,3))
+    for i in range(N-1):
+        for j in range(i+1, N):
+              # Compute separation vector between oxygen atoms with PBC
+              separation_vector= compute_separation_vector_pbc(positions[i], positions[j], size)
+              r = np.linalg.norm(separation_vector)
+              # compute squared separation distance
+              dist2 = np.dot(r,r)
+              # Select LJ and Coulomb parameters based on atom types
+             
+              epsilon = eps_oo if i % 3 == 0 and j % 3 == 0 else eps_oh
+              sigma = sigma_oo if i % 3 == 0 and j % 3 == 0 else sigma_oh
+              q_i = q_oxygen if i % 3 == 0 else q_hydrogen
+              q_j = q_oxygen if j % 3 == 0 else q_hydrogen             
+              
+              r6 = sigma**6 / dist2**3
+              r12 = r6 ** 2       
+              lj_energy = 4 * epsilon * (r12 - r6) / dist2 * r
+              coulomb_energy = (q_i * q_j) / (4 * np.pi * r)
+
+              lj_force = 24 * epsilon * (2 * r12 - r6) / r
+              coulomb_force = -(q_i * q_j) / (4 * np.pi * r ** 2)
+
+    #print(lj_energy, coulomb_energy)
+    #print(lj_force, coulomb_force)
+    return(lj_energy, coulomb_energy, lj_force, coulomb_force)
+
+
+def tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force):
+    """
+    Total forces
+    """
+    # Declare the zeroes force array
+    forces = np.zeros_like(bond_force_oh1, dtype = np.float64)
+    forces += bond_force_oh1 + bond_force_oh2 + lj_force + coulomb_force
+    #print(forces)
+    return(forces)
+
+def tot_energy(velocities, m, bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy):
+    """
+    m = mass_of_water
+    """
+    v_sq = velocities ** 2
+    v_sq_sum_d = np.sum(v_sq, axis = 1) # summing over dimension
+    v_sq_sum_p = np.sum(v_sq_sum_d, axis=0) #summing over particles
+    KE = 0.5 * m * v_sq_sum_p
+    total_energy =  KE + bond_energy_oh1 + bond_energy_oh2 + lj_energy + coulomb_energy
+    print(total_energy)
+    return total_energy
+
+
+def leap_frog(positions, velocities, forces, m, dt, size):
+    """
+    positions = particle_positions
+    velocities = particle_velocities
+    forces = force_on_particles
+    m = mass_of_water
+    dt = time_step
+    size = box_size
+    """ 
+    N = positions.shape[0]
+    # Update velocities
+    velocities += (forces *  dt / m)
+                        
+    # Update positions using updated velocities
+    positions += velocities * dt    
+   
+    # wrap into central box (box is from 0 to size in each dimension)
+    for i in range(N):
+        for j in range(3):
+            if positions[i,j] < 0:
+               positions[i,j] += size
+            elif positions[i,j] > size:
+                 positions[i,j] -= size   
+
+    #print(positions, velocities)
+    return positions, velocities
+
+# Trajectory frame
+def write_trajectory_frame(positions, file_pointer, step):
+    """
+    positions = particle_positions
+    file_pointer = trajectory_file_pointer
+    step = step_number
+    """
+    N = positions.shape[0]
+    file_pointer.write(" %8d\n"  % (N))
+    file_pointer.write("frame: %8d\n" % (step))   
+
+    for i in range(N):   
+        atom_type = "O" if i == 0 else "H"
+        file_pointer.write("%4s %10.5f %10.5f %10.5f\n" % (atom_type, positions[i, 0], positions[i, 1], positions[i, 2]))
+
+# Run the simulation for TIP3P water model
+N = 1  # Number of water molecules (3 particles each)
+size = 30.0  # Angstrom
+T = 300
+step = 100000
+delta_step = 100
+dt = 0.001
+sim = run_md(N, size, T, step, delta_step, dt)
