@@ -209,20 +209,16 @@ def tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force):
     Total forces
     """
     # Declare the zeroes force array
-    forces = np.zeros_like(bond_force_oh1, dtype = np.float64)
+    forces = np.zeros_like(bond_force_oh1, dtype = np.float32)
     forces += bond_force_oh1 + bond_force_oh2 + lj_force + coulomb_force
     #print(forces)
     return(forces)
 
 def tot_energy(velocities, m, bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy):
     """
-    m = mass_of_water
+    Total Energy
     """
-    v_sq = velocities ** 2
-    v_sq_sum_d = np.sum(v_sq, axis = 1) # summing over dimension
-    v_sq_sum_p = np.sum(v_sq_sum_d, axis=0) #summing over particles
-    KE = 0.5 * m * v_sq_sum_p
-    total_energy =  KE + bond_energy_oh1 + bond_energy_oh2 + lj_energy + coulomb_energy
+    total_energy = bond_energy_oh1 + bond_energy_oh2 + lj_energy + coulomb_energy
     #print(total_energy)
     return total_energy
 
@@ -293,8 +289,8 @@ def write_trajectory_frame(positions, file_pointer, step):
 N = 1  # Number of water molecules (3 particles each)
 size = 30.0  # Angstrom
 T = 300
-step = 100
-delta_step = 1
+step = 10000
+delta_step = 10
 dt = 0.001
 sim = run_md(N, size, T, step, delta_step, dt)
 ~                                                   
