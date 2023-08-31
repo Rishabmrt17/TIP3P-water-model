@@ -71,7 +71,7 @@ def run_md(N, size, T, step, delta_step, dt):
 
 ######Sub-Routines########
 
-# Initialize positions for TIP3P water molecules
+# Initialize positions for TIP3P water molecule
 def initialize_positions(N, size):
     """
     Initialize positions for TIP3P modified water model
@@ -94,10 +94,10 @@ def initialize_positions(N, size):
     print(positions)
     return positions
 
-# Initialize velocities for TIP3P modified water molecules
+# Initialize velocities for TIP3P modified water model
 def initialize_velocities(N, kB, T, m:
     """
-    Initialize velocities for TIP3P modified water molecules
+    Initialize velocities for TIP3P modified water model
     kB = boltzmann_constant
     m = mass_of_water
     """
