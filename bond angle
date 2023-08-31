@@ -1,0 +1,54 @@
+import MDAnalysis as mda
+import numpy as np
+import warnings
+
+# Define paths to trajectory files
+trajectory_path = 'traj_MD.xyz'
+
+# Load trajectory and topology
+u = mda.Universe(trajectory_path)
+
+# Select oxygen (O) and hydrogen (H) atoms
+oxygen_atoms = u.select_atoms('name O')
+hydrogen_atoms = u.select_atoms('name H')
+
+# Initialize an array to store bond angles
+bond_angles = []
+
+# Open the output file for writing
+output_file = open("angles.xyz", 'w')
+
+# Iterate through frames and calculate bond angles
+for ts in u.trajectory:
+    if len(hydrogen_atoms) == 2:
+
+        # Get positions of the atoms
+        h1_position = hydrogen_atoms[0].position
+        h2_position = hydrogen_atoms[1].position
+        oxygen_positions = oxygen_atoms[0].position
+
+        # Calculate vectors between the atoms
+        vec_h1o = hydrogen_atoms[0].position - oxygen_atoms[0].position
+        vec_h2o = hydrogen_atoms[1].position - oxygen_atoms[0].position
+
+        # Calculate bond angles using dot product and arccosine
+        cos_angle = np.dot(vec_h1o, vec_h2o) / (np.linalg.norm(vec_h1o) * np.linalg.norm(vec_h2o))
+        bond_angle = np.arccos(cos_angle) * (180.0 / np.pi)
+
+        #Append bond angle to the array
+        bond_angles.append(bond_angle)
+
+        # Write bond angle to the output file
+        output_file.write(f"Frame {ts.frame}:\n")
+        output_file.write(f"Bond Angle - {bond_angle:.2f} degrees\n")
+    else:
+        print("Select exactly two hydrogen atoms for the H-O-H angle calculation.")
+
+# Calculate standard deviation
+std_dev_angle = np.std(bond_angles)
+
+# Print the standard deviation
+print(f"Standard Deviation of H-O-H Bond Angle: {std_dev_angle:.2f} degrees")
+
+# Close the output file
+output_file.close()
