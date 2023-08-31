@@ -2,7 +2,7 @@ import numpy as np
 
 def run_md(N, size, T, step, delta_step, dt):
     """
-    MD program using leap-frog algorithm for TIP3P water model
+    MD program using leap-frog algorithm for TIP3P modified water model
     N = number_of_water_molecules
     size = size_of_the_box
     T = temperature
@@ -21,14 +21,16 @@ def run_md(N, size, T, step, delta_step, dt):
     # Define harmonic bond constants
     kbond = 450 #kcal/mole/Å**2
     req = 0.9572 #Angstrom
+    k_angle = 55.0 #kcal/mol/rad-2
+    theta_eq = 104.52 #degree
 
     # Define Lennard-Jones parameters for oxygen-oxygen interaction
-    sigma_oo = 3.166  # Angstrom
-    eps_oo = 0.155  # kcal/mol
+    sigma_oo = 3.1506  # Angstrom
+    eps_oo = 0.1521  # kcal/mol
 
     # Define Lennard-Jones parameters for oxygen-hydrogen interaction
     sigma_oh = 0.0  # Angstrom
-    eps_oh = 0.0  # kcal/mol
+    eps_oh = 0.084  # kcal/mol
 
     # Open trajectory file
     file = open("traj_MD.xyz", 'w')
@@ -37,23 +39,26 @@ def run_md(N, size, T, step, delta_step, dt):
     # Initialize positions
     positions = initialize_positions(N, size)
     # Initialize velocities
-    velocities = initialize_velocities(N, kB, T, m, m_oxygen, m_hydrogen)
+    velocities = initialize_velocities(N, kB, T, m)
     # Main MD loop
     for steps in range(step):
         # Compute Bonded Forces and Energy
         bond_energy_oh1, bond_energy_oh2, bond_force_oh1, bond_force_oh2 = compute_bonded_forces_energy(positions, kbond, req, size)
 
+        # Compute bond angle energy and forces
+        angle_energy, angle_force = compute_bond_angle_forces_energy(positions, k_angle, theta_eq)
+
         # Compute Non-bonded Forces and Energy
         lj_energy, coulomb_energy, lj_force, coulomb_force = compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size)
-
+        
         # Compute Total Forces
-        forces = tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force)
+        forces = tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force, angle_force)
 
         #Compute Total Energy
-        totEnergy = tot_energy(velocities, m, bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy)
+        totEnergy = tot_energy(bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy, angle_energy)
 
         # Propagate Positions and Velocities
-        positions, velocities = leap_frog(positions, m_oxygen, velocities, m_hydrogen, m, forces, size)
+        positions, velocities = leap_frog(positions, velocities, m, forces, size)
 
         if steps % delta_step == 0:
             write_trajectory_frame(positions, file, step)
@@ -69,7 +74,7 @@ def run_md(N, size, T, step, delta_step, dt):
 # Initialize positions for TIP3P water molecules
 def initialize_positions(N, size):
     """
-    Initialize positions for TIP3P water model
+    Initialize positions for TIP3P modified water model
     """
     bond_length_OH = 0.9572  # Oxygen-Hydrogen bond length (Angstrom)
     bond_angle_HOH = 104.52  # Oxygen-Hydrogen-Oxygen bond angle (degrees)
@@ -89,24 +94,14 @@ def initialize_positions(N, size):
     print(positions)
     return positions
 
-# Initialize velocities for TIP3P water molecules
-def initialize_velocities(N, kB, T, m, m_oxygen, m_hydrogen):
+# Initialize velocities for TIP3P modified water molecules
+def initialize_velocities(N, kB, T, m:
     """
-    Initialize velocities for TIP3P water molecules
+    Initialize velocities for TIP3P modified water molecules
     kB = boltzmann_constant
     m = mass_of_water
     """
-    velocities = np.random.normal(loc=0, scale=1, size=(N * 3, 3)) * np.sqrt(kB * T / m_oxygen)
-
-    # Adjust hydrogen velocities to maintain rigid geometry
-    for i in range(0, N * 3, 3):
-        # Calculate the center of mass velocity for the water molecule
-        center_of_mass_velocity = (m_oxygen * velocities[i] + m_hydrogen * velocities[i + 1] + m_hydrogen * velocities[i + 2]) / (m_oxygen + 2 * m_hydrogen)
-
-        # Set hydrogen velocities to the center of mass velocity
-        velocities[i + 1] = center_of_mass_velocity
-        velocities[i + 2] = center_of_mass_velocity
-
+    velocities = np.random.normal(loc=0, scale=1, size=(N * 3, 3)) * np.sqrt(kB * T / m)
     print(velocities)
     return velocities
 
@@ -134,7 +129,7 @@ def compute_separation_vector_pbc(p1, p2, size):
 
 def compute_bonded_forces_energy(positions, kbond, req, size):
     """
-    Compute bonded forces and energy for TIP3P water model
+    Compute bonded forces and energy for TIP3P modified water model
     """
     # retrieve meta data
     N = positions.shape[0]
@@ -163,6 +158,29 @@ def compute_bonded_forces_energy(positions, kbond, req, size):
     #print(bond_energy_oh1, bond_energy_oh2)
     return(bond_energy_oh1, bond_energy_oh2, bond_force_oh1, bond_force_oh2)
 
+def compute_bond_angle_forces_energy(positions, k_angle, theta_eq):
+    """
+    Compute bond angle forces and energy for TIP3P modified water model
+    """
+    # Retrieve meta data
+    N = positions.shape[0]
+    # Initialize bonded angle energy
+    angle_energy = 0
+    # Loop over water molecules
+    for i in range(0, N, 3):
+        # Calculate bond vectors
+        bond_vector1 = positions[i + 1] - positions[i]
+        bond_vector2 = positions[i + 1] - positions[i + 2]
+        # Calculate bond angles
+        cos_theta = np.dot(bond_vector1, bond_vector2) / (np.linalg.norm(bond_vector1) * np.linalg.norm(bond_vector2))
+        theta = np.arccos(cos_theta)
+        # Calculate harmonic angle potential energy
+        angle_energy += 0.5 * k_angle * (theta - theta_eq) ** 2
+        # Calculate forces based on angle deviation
+        angle_force = -k_angle * (theta - theta_eq)
+
+    #print(angle_energy, angle_force)
+    return angle_energy, angle_force
 
 def compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size):
     """
@@ -210,20 +228,20 @@ def tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force):
     """
     # Declare the zeroes force array
     forces = np.zeros_like(bond_force_oh1, dtype = np.float32)
-    forces += bond_force_oh1 + bond_force_oh2 + lj_force + coulomb_force
+    forces += bond_force_oh1 + bond_force_oh2 + lj_force + coulomb_force + angle_force
     #print(forces)
     return(forces)
 
-def tot_energy(velocities, m, bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy):
+def tot_energy(bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy):
     """
     Total Energy
     """
-    total_energy = bond_energy_oh1 + bond_energy_oh2 + lj_energy + coulomb_energy
+    total_energy = bond_energy_oh1 + bond_energy_oh2 + lj_energy + coulomb_energy + angle_energy
     #print(total_energy)
     return total_energy
 
 
-def leap_frog(positions, m_oxygen, velocities, m_hydrogen, m, forces, size):
+def leap_frog(positions, velocities, m, forces, size):
     """
     positions = particle_positions
     velocities = particle_velocities
@@ -233,31 +251,11 @@ def leap_frog(positions, m_oxygen, velocities, m_hydrogen, m, forces, size):
     size = box_size
     """
     N = positions.shape[0]
-
-    # Calculate center of mass velocity of the water molecule
-    center_of_mass_velocity = (m_oxygen * velocities[0] + m_hydrogen * velocities[1] + m_hydrogen * velocities[2]) / m
-
-    # Update velocities of hydrogen atoms using the center of mass velocity
-    velocities[1] = center_of_mass_velocity
-    velocities[2] = center_of_mass_velocity
-
     # Update velocities
     velocities += (forces *  dt / m)
 
     # Update positions using updated velocities
     positions += velocities * dt
-
-     # Ensure rigid geometry by recalculating hydrogen positions
-    for i in range(0, N, 3):
-        oxygen_position = positions[i]
-
-        # Calculate separation vectors between oxygen and hydrogen atoms
-        separation_vector_oh1 = compute_separation_vector_pbc(oxygen_position, positions[i + 1], size)
-        separation_vector_oh2 = compute_separation_vector_pbc(oxygen_position, positions[i + 2], size)
-
-        # Update hydrogen positions based on the oxygen position and rigid geometry
-        positions[i + 1] = oxygen_position + separation_vector_oh1
-        positions[i + 2] = oxygen_position + separation_vector_oh2
 
     # wrap into central box (box is from 0 to size in each dimension)
     for i in range(N):
