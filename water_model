@@ -35,27 +35,30 @@ def run_md(N, size, T, step, delta_step, dt):
     # Open trajectory file
     file = open("traj_MD.xyz", 'w')
     vel_file = open("vel_MD.xyz", 'w')
-
+    force_file = open("force_MD.xyz", 'w')
     # Initialize positions
     positions = initialize_positions(N, size)
     # Initialize velocities
     velocities = initialize_velocities(N, kB, T, m)
     # Main MD loop
     for steps in range(step):
+        # Initialize forces array
+        forces = np.zeros_like(positions)
+
         # Compute Bonded Forces and Energy
-        bond_energy_oh1, bond_energy_oh2, bond_force_oh1, bond_force_oh2 = compute_bonded_forces_energy(positions, kbond, req, size)
+        bonded_energy, bonded_force= compute_bonded_forces_energy(positions, kbond, req, size)
 
         # Compute bond angle energy and forces
         angle_energy, angle_force = compute_bond_angle_forces_energy(positions, k_angle, theta_eq)
 
         # Compute Non-bonded Forces and Energy
-        lj_energy, coulomb_energy, lj_force, coulomb_force = compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size)
+        total_lj_energy, total_coulomb_energy, lj_force, coulomb_force = compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size)
         
         # Compute Total Forces
-        forces = tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force, angle_force)
+        forces = tot_force(bonded_force, lj_force, coulomb_force, angle_force)
 
         #Compute Total Energy
-        totEnergy = tot_energy(bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy, angle_energy)
+        totEnergy = tot_energy(bonded_energy, lj_energy, coulomb_energy, angle_energy)
 
         # Propagate Positions and Velocities
         positions, velocities = leap_frog(positions, velocities, m, forces, size)
@@ -63,11 +66,11 @@ def run_md(N, size, T, step, delta_step, dt):
         if steps % delta_step == 0:
             write_trajectory_frame(positions, file, step)
             write_trajectory_frame(velocities, vel_file, step)
-
+            write_trajectory_frame(forces, force_file, step)
     # Close trajectory file
     file.close()
     vel_file.close()
-
+    force_file.close()
 
 ######Sub-Routines########
 
@@ -149,14 +152,21 @@ def compute_bonded_forces_energy(positions, kbond, req, size):
         bond_energy_oh1 = 0.5 * kbond * (bond_length_oh1 - req) ** 2
         bond_energy_oh2 = 0.5 * kbond * (bond_length_oh2 - req) ** 2
 
+        # Accumulate the bonded energy
+        bonded_energy += bond_energy_oh1 + bond_energy_oh2
 
         # Calculate derivative of bond energy with respect to bond length (bond force)
         bond_force_oh1 = -kbond * (bond_length_oh1 - req) * separation_vector_oh1 / bond_length_oh1
         bond_force_oh2 = -kbond * (bond_length_oh2 - req) * separation_vector_oh2 / bond_length_oh2
 
-    #print(bond_force_oh1, bond_force_oh2)
-    #print(bond_energy_oh1, bond_energy_oh2)
-    return(bond_energy_oh1, bond_energy_oh2, bond_force_oh1, bond_force_oh2)
+        # Accumulate the forces in the provided force array
+
+        forces[i + 1] += bond_force_oh1
+        forces[i + 2] += bond_force_oh2
+        bonded_force += bond_force_oh1 + bond_force_oh2
+
+    #print(bonded_energy, bonded_force)
+    return(bonded_energy, bonded_force)
 
 def compute_bond_angle_forces_energy(positions, k_angle, theta_eq):
     """
@@ -178,7 +188,16 @@ def compute_bond_angle_forces_energy(positions, k_angle, theta_eq):
         angle_energy += 0.5 * k_angle * (theta - theta_eq) ** 2
         # Calculate forces based on angle deviation
         angle_force = -k_angle * (theta - theta_eq)
+        
+        # Calculate forces on individual atoms
+        force_i = angle_force * (bond_vector2 / np.linalg.norm(bond_vector2) - bond_vector1 / np.linalg.norm(bond_vector1))
+        force_i1 = angle_force * (bond_vector1 / np.linalg.norm(bond_vector1))
+        force_i2 = angle_force * (-bond_vector2 / np.linalg.norm(bond_vector2))
 
+        forces[i] += force_i
+        forces[i + 1] += force_i1
+        forces[i + 2] += force_i2
+    
     #print(angle_energy, angle_force)
     return angle_energy, angle_force
 
@@ -212,14 +231,20 @@ def compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, ep
               r12 = r6 ** 2
               lj_energy = 4 * eps_oo * (r12 - r6)
               coulomb_energy = (q_i * q_j) / (4 * np.pi * r)
+              total_lj_energy += lj_energy
+              total_coulomb_energy += coulomb_energy
 
-              lj_force = 24 * eps_oo * (2 * r12 - r6) / dist2 * r
-              coulomb_force = -(q_i * q_j) / (4 * np.pi * r ** 2)
+              lj_force_factor = 24 * eps_oo * (2 * r12 - r6) / dist2 * r
+              coulomb_force_factor = -(q_i * q_j) / (4 * np.pi * r ** 2)
 
-    #print(dist2)
-    #print(lj_energy, coulomb_energy)
+              lj_force[i] += lj_force_factor
+              lj_force[j] -= lj_force_factor
+              coulomb_force[i] += coulomb_force_factor
+              coulomb_force[j] -= coulomb_force_factor
+
+    #print(total_lj_energy, total_coulomb_energy)
     #print(lj_force, coulomb_force)
-    return(lj_energy, coulomb_energy, lj_force, coulomb_force)
+    return(total_lj_energy, total_coulomb_energy, lj_force, coulomb_force)
 
 
 def tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force):
@@ -228,7 +253,7 @@ def tot_force(bond_force_oh1, bond_force_oh2, lj_force, coulomb_force):
     """
     # Declare the zeroes force array
     forces = np.zeros_like(bond_force_oh1, dtype = np.float32)
-    forces += bond_force_oh1 + bond_force_oh2 + lj_force + coulomb_force + angle_force
+    forces += bonded_force + lj_force + coulomb_force + angle_force
     #print(forces)
     return(forces)
 
@@ -236,7 +261,7 @@ def tot_energy(bond_energy_oh1, bond_energy_oh2, lj_energy, coulomb_energy):
     """
     Total Energy
     """
-    total_energy = bond_energy_oh1 + bond_energy_oh2 + lj_energy + coulomb_energy + angle_energy
+    total_energy = bonded_energy + total_lj_energy + total_coulomb_energy + angle_energy
     #print(total_energy)
     return total_energy
 
