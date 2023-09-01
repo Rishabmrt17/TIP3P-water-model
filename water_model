@@ -24,10 +24,6 @@ def run_md(N, size, T, step, delta_step, dt):
     k_angle = 55.0 #kcal/mol/rad-2
     theta_eq = 104.52 #degree
 
-    # Define Lennard-Jones parameters for oxygen-oxygen interaction
-    sigma_oo = 3.1506  # Angstrom
-    eps_oo = 0.1521  # kcal/mol
-
     # Define Lennard-Jones parameters for oxygen-hydrogen interaction
     sigma_oh = 1.0  # Angstrom
     eps_oh = 0.0  # kcal/mol
@@ -57,7 +53,7 @@ def run_md(N, size, T, step, delta_step, dt):
         angle_energy, bond_angle_force = compute_bond_angle_forces_energy(positions, k_angle, theta_eq, forces)
 
         # Compute Non-bonded Forces and Energy
-        total_lj_energy, total_coulomb_energy, lj_force, coulomb_force = compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size, forces)
+        total_lj_energy, total_coulomb_energy, lj_force, coulomb_force = compute_lj_coulombic_energy_forces(positions, sigma_hh, eps_hh, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size, forces)
 
         # Compute Total Forces
         totforce = tot_force(positions, bonded_force, lj_force, coulomb_force, bond_angle_force)
@@ -214,7 +210,7 @@ def compute_bond_angle_forces_energy(positions, k_angle, theta_eq, forces):
     #print(angle_energy, bond_angle_force)
     return angle_energy, bond_angle_force
 
-def compute_lj_coulombic_energy_forces(positions, sigma_oo, eps_oo, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size, forces):
+def compute_lj_coulombic_energy_forces(positions, sigma_hh, eps_hh, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size, forces):
     """
     Compute non-bonded LJ and Coulombic force array
     """
