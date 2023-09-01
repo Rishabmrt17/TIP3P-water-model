@@ -12,8 +12,13 @@ u = mda.Universe(trajectory_path)
 oxygen_atoms = u.select_atoms('name O')
 hydrogen_atoms = u.select_atoms('name H')
 
-# Initialize an array to store bond angles
-bond_angles = []
+# Initialize variables to store the sum of bond angles and frame count
+sum_bond_angles = 0.0
+frame_count = 0
+
+# Initialize variable to store the sum of squared deviation
+sum_squared_deviations = 0.0
+frame_count = 0
 
 # Open the output file for writing
 output_file = open("angles.xyz", 'w')
@@ -35,8 +40,12 @@ for ts in u.trajectory:
         cos_angle = np.dot(vec_h1o, vec_h2o) / (np.linalg.norm(vec_h1o) * np.linalg.norm(vec_h2o))
         bond_angle = np.arccos(cos_angle) * (180.0 / np.pi)
 
-        #Append bond angle to the array
-        bond_angles.append(bond_angle)
+
+        # Add the bond angle to the sum
+        sum_bond_angles += bond_angle
+
+        # Increment the frame count
+        frame_count += 1
 
         # Write bond angle to the output file
         output_file.write(f"Frame {ts.frame}:\n")
@@ -44,11 +53,29 @@ for ts in u.trajectory:
     else:
         print("Select exactly two hydrogen atoms for the H-O-H angle calculation.")
 
-# Calculate standard deviation
-std_dev_angle = np.std(bond_angles)
-
-# Print the standard deviation
-print(f"Standard Deviation of H-O-H Bond Angle: {std_dev_angle:.2f} degrees")
-
 # Close the output file
 output_file.close()
+
+# Calculate the average bond angle
+average_bond_angle = sum_bond_angles / frame_count
+
+# Print the average bond angle
+print(f"Average H-O-H Bond Angle: {average_bond_angle:.2f} degrees")
+
+# Calculate squared deviation from the average bond angle
+squared_deviation = (bond_angle - average_bond_angle) ** 2
+
+# Add the squared deviation to the sum
+sum_squared_deviations += squared_deviation
+
+# Increment the frame count
+frame_count += 1
+
+# Calculate the variance
+variance = sum_squared_deviations / frame_count
+
+# Calculate the standard deviation
+std_deviation = np.sqrt(variance)
+
+#Print the standard deviation
+print(f"Standard Deviation of H-O-H Bond Angle: {std_deviation:.2f} degrees")
