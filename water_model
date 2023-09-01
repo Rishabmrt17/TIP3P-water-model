@@ -22,7 +22,7 @@ def run_md(N, size, T, step, delta_step, dt):
     kbond = 450 #kcal/mole/Å**2
     req = 0.9572 #Angstrom
     k_angle = 55.0 #kcal/mol/rad-2
-    theta_eq = 104.52 #degree
+    theta_eq = 1.82 #radian
 
     # Define Lennard-Jones parameters for oxygen-oxygen interaction
     #sigma_oo = 3.1506  # Angstrom
@@ -86,7 +86,7 @@ def initialize_positions(N, size):
     Initialize positions for TIP3P modified water model
     """
     bond_length_OH = 0.9572  # Oxygen-Hydrogen bond length (Angstrom)
-    bond_angle_HOH = 104.52  # Oxygen-Hydrogen-Oxygen bond angle (degrees)
+    bond_angle_HOH = 1.82  # Oxygen-Hydrogen-Oxygen bond angle (degrees)
 
     positions = np.zeros((N * 3, 3))  # Initialize with shape (N * 3, 3)
 
