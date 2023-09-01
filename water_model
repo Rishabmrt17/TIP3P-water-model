@@ -207,7 +207,9 @@ def compute_bond_angle_forces_energy(positions, k_angle, theta_eq, forces):
         angle_force = -k_angle * (theta - theta_eq)
 
         # Accumulate the forces in the provided array
-        bond_angle_force[i] += angle_force
+        bond_angle_force[i] += angle_force * bond_vector1 / np.linalg.norm(bond_vector1)
+        bond_angle_force[i + 1] += angle_force * (bond_vector2 - bond_vector1) / np.linalg.norm(bond_vector2 - bond_vector1)
+        bond_angle_force[i + 2] += angle_force * (-bond_vector2) / np.linalg.norm(bond_vector2)
 
     #print(angle_energy, bond_angle_force)
     return angle_energy, bond_angle_force
