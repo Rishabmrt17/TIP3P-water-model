@@ -43,13 +43,29 @@ for ts in u.trajectory:
     else:
         print("Select exactly two hydrogen atoms for bond distance calculation.")
 
-# Calculate standard deviations
-std_dev_h1o = np.std(bond_distances_h1o)
-std_dev_h2o = np.std(bond_distances_h2o)
-
-# Print the standard deviations
-print(f"Standard Deviation of H1-O Bond Distance: {std_dev_h1o:.2f} Å")
-print(f"Standard Deviation of H2-O Bond Distance: {std_dev_h2o:.2f} Å")
-
 # Close the output file
 output_file.close()
+
+# Calculate the average bond distance
+average_bond_distance_h1o = np.mean(bond_distances_h1o)
+average_bond_distance_h2o = np.mean(bond_distances_h2o)
+
+# Print the average bond distances
+print(f"Average H1-O Bond Distance: {average_bond_distance_h1o:.2f} Å")
+print(f"Average H2-O Bond Distance: {average_bond_distance_h2o:.2f} Å")
+
+# Calculate the squared deviations from the average
+squared_deviations_h1o = (bond_distances_h1o - average_bond_distance_h1o) ** 2
+squared_deviations_h2o = (bond_distances_h2o - average_bond_distance_h2o) ** 2
+
+# Calculate the variance
+variance_h1o = np.mean(squared_deviations_h1o)
+variance_h2o = np.mean(squared_deviations_h2o)
+
+# Calculate the standard deviation
+std_deviation_h1o = np.sqrt(variance_h1o)
+std_deviation_h2o = np.sqrt(variance_h2o)
+
+# Print the standard deviations
+print(f"Standard Deviation of H1-O Bond Distance: {std_deviation_h1o:.2f} Å")
+print(f"Standard Deviation of H2-O Bond Distance: {std_deviation_h2o:.2f} Å")
