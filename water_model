@@ -284,32 +284,37 @@ def tot_energy(velocities, m, bonded_energy, total_lj_energy, total_coulomb_ener
     #print(total_energy)
     return total_energy
 
-def leap_frog(positions, velocities, m, forces, dt,  size):
+def leap_frog(oxygen_position, hydrogen_position1, hydrogen_position2, oxygen_velocity, hydrogen_velocity1, hydrogen_velocity2, mass_oxygen, mass_hydrogen, dt, size):
     """
-    positions = particle_positions
-    velocities = particle_velocities
-    forces = force_on_particles
-    m = mass_of_water
+    oxygen_position = position of the oxygen atom
+    hydrogen_position1 = position of the first hydrogen atom
+    hydrogen_position2 = position of the second hydrogen atom
+    forces = force_on_water_molecule
+    m_oxygen = mass_of_oxygen
+    m_hydrogen = mass_of_hydrogen
     dt = time_step
-    size = box_size
+    size = size_of_box
     """
-    N = positions.shape[0]
+    # Update oxygen atom's velocity and position
+    oxygen_velocity += (forces * dt / mass_oxygen)
+    oxygen_position += oxygen_velocity * dt
 
-    # Update velocities
-    velocities += (forces *  dt / m)
+    # Update hydrogen atoms' velocity and position
+    hydrogen_velocity1 += (forces * dt / mass_hydrogen)
+    hydrogen_velocity2 += (forces * dt / mass_hydrogen)
+    hydrogen_position1 += hydrogen_velocity1 * dt
+    hydrogen_position2 += hydrogen_velocity1 * dt
 
-    # Update positions using updated velocities
-    positions += velocities * dt
-
-    # wrap into central box (box is from 0 to size in each dimension)
-    for i in range(N):
+    # Wrap atom positions into the central box (box is from 0 to size in each dimension)
+    positions = [oxygen_position, hydrogen_position1, hydrogen_position2]
+    velocities = [oxygen_velocity, hydrogen_velocity1, hydrogen_velocity2]
+   
+    for i in range(3):
         for j in range(3):
-            if positions[i,j] < 0:
-               positions[i,j] += size
-            elif positions[i,j] > size:
-                 positions[i,j] -= size
-
-    #print(positions, velocities)
+            if positions[i][j] < 0:
+                positions[i][j] += size
+            elif positions[i][j] > size:
+                positions[i][j] -= size
     return positions, velocities
 
 # Trajectory frame
