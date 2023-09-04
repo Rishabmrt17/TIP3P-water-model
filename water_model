@@ -1,6 +1,6 @@
 import numpy as np
 
-def run_md(N, size, T, step, delta_step, dt):
+def run_md(N, size, T, step, delta_step, dt, kbond, sigma_hh, eps_hh, sigma_oh, eps_oh, q_hydrogen, q_oxygen, req, k_angle, theta_eq):
     """
     MD program using leap-frog algorithm for TIP3P modified  water model
     N = number_of_water_molecules
@@ -15,27 +15,6 @@ def run_md(N, size, T, step, delta_step, dt):
     m_oxygen = 15.9994  # Oxygen mass (amu)
     m_hydrogen = 1.008  # Hydrogen mass (amu)
     m = 17.0074 # mass of water (amu)
-    q_oxygen = -0.834  # Oxygen charge (e)
-    q_hydrogen = 0.417  # Hydrogen charge (e)
-
-    # Define harmonic bond constants
-    kbond = 450 #kcal/mole/Å**2
-    req = 0.9572 #Angstrom
-    k_angle = 55.0 #kcal/mol/rad-2
-    theta_eq = 1.82 #radian
-
-    # Define Lennard-Jones parameters for oxygen-oxygen interaction
-    #sigma_oo = 3.1506  # Angstrom
-    #eps_oo = 0.1521  # kcal/mol
-
-    # Define Lennard-Jones parameters for oxygen-hydrogen interaction
-    sigma_oh = 1.0  # Angstrom
-    eps_oh = 0.0  # kcal/mol
-
-    # Define Lennard-Jones parameters for hydrogen-hydrogen interaction
-    sigma_hh = 1.0 # Angstrom
-    eps_hh = 0.0 # kcal/mol
-
     # Open trajectory file
     file = open("traj_MD.xyz", 'w')
     vel_file = open("vel_MD.xyz", 'w')
@@ -43,7 +22,7 @@ def run_md(N, size, T, step, delta_step, dt):
     # Initialize positions
     positions = initialize_positions(N, size)
     # Initialize velocities
-    velocities = initialize_velocities(N, kB, T, m)
+    velocities = initialize_velocities(N, kB, T, m_oxygen, m_hydrogen, size)
     # Main MD loop
     for steps in range(step):
 
@@ -59,18 +38,15 @@ def run_md(N, size, T, step, delta_step, dt):
         # Compute Non-bonded Forces and Energy
         total_lj_energy, total_coulomb_energy, lj_force, coulomb_force = compute_lj_coulombic_energy_forces(positions, sigma_hh, eps_hh, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size, forces)
 
-        # Compute Total Forces
-        totforce = tot_force(positions, bonded_force, lj_force, coulomb_force, bond_angle_force)
-
         #Compute Total Energy
         totEnergy = tot_energy(velocities, m, bonded_energy, total_lj_energy, total_coulomb_energy, angle_energy)
 
         # Propagate Positions and Velocities
-        positions, velocities = leap_frog(positions, velocities, m, forces, dt, size)
+        positions, velocities = velocity_verlet(positions, velocities, bonded_force, bond_angle_force, lj_force, coulomb_force,  m, dt)
 
         if steps % delta_step == 0:
             write_trajectory_frame(positions, file, step)
-            write_trajectory_frame(velocities, vel_file, step)
+            write_trajectory_frame(velocities, file, step)
             write_trajectory_frame(forces, force_file, step)
     # Close trajectory file
     file.close()
@@ -86,7 +62,7 @@ def initialize_positions(N, size):
     Initialize positions for TIP3P modified water model
     """
     bond_length_OH = 0.9572  # Oxygen-Hydrogen bond length (Angstrom)
-    bond_angle_HOH = 1.82  # Oxygen-Hydrogen-Oxygen bond angle (degrees)
+    bond_angle_HOH = 1.82  # Oxygen-Hydrogen-Oxygen bond angle (radian)
 
     positions = np.zeros((N * 3, 3))  # Initialize with shape (N * 3, 3)
 
@@ -100,34 +76,51 @@ def initialize_positions(N, size):
         positions[i * 3 + 1] = hydrogen_position1
         positions[i * 3 + 2] = hydrogen_position2
 
-    print(positions)
+    #print(positions)
     return positions
 
 # Initialize velocities for TIP3P modified water model
-def initialize_velocities(N, kB, T, m):
+def initialize_velocities(N, kB, T, m_oxygen, m_hydrogen, size):
     """
     Initialize velocities for TIP3P modified water model
-    kB = boltzmann_constant
-    m = mass_of_water
+    N = number_of_water_molecules
+    kB = boltzmann constant
+    T = temperature
+    m_oxygen = mass of oxygen atom
+    m_hydrogen = mass of hydrogen atom
+    size = box_size
     """
-    velocities = np.random.normal(loc=0, scale=1, size=(N * 3, 3)) * np.sqrt(kB * T / m)
-    print(velocities)
+    # Initialize the velocities array with the correct shape
+    velocities = np.zeros((N * 3, 3))
+
+    for i in range(N):
+        # Generate random velocities for each atom in the water molecule
+        oxygen_velocity = np.random.normal(loc=0, scale= (np.sqrt(kB*T/m_oxygen)), size=(N, 3))
+        hydrogen_velocity1 = np.random.normal(loc=0, scale= (np.sqrt(kB*T/m_hydrogen)), size=(N, 3))
+        hydrogen_velocity2 = np.random.normal(loc=0, scale= (np.sqrt(kB*T/m_hydrogen)), size=(N, 3))
+
+        # Assign calculated positions to the corresponding indices in the 'velocities' array
+        velocities[i * 3] = oxygen_velocity
+        velocities[i * 3 + 1] = hydrogen_velocity1
+        velocities[i * 3 + 2] = hydrogen_velocity2
+
+    #print(velocities)
     return velocities
 
-def compute_separation_vector_pbc_h2o(oxygen_position, hydrogen1_position, hydrogen2_position, size):
+def compute_separation_vector_pbc_h2o(oxygen_position, hydrogen_position1, hydrogen_position2, size):
     """
     Compute separation vector considering periodic boundary conditions for a water molecule (H2O)
     oxygen_position   -   position of oxygen atom
-    hydrogen1_position -   position of first hydrogen atom
-    hydrogen2_position -   position of second hydrogen atom
+    hydrogen_position1 -   position of first hydrogen atom
+    hydrogen_position2 -   position of second hydrogen atom
     size              -   linear box dimension
     """
 
     dim = oxygen_position.shape[0]
 
     # Calculate separation vectors between oxygen and hydrogen atoms
-    separation_vector_oh1 = oxygen_position - hydrogen1_position
-    separation_vector_oh2 = oxygen_position - hydrogen2_position
+    separation_vector_oh1 = oxygen_position - hydrogen_position1
+    separation_vector_oh2 = oxygen_position - hydrogen_position2
 
     # Apply PBC for each separation vector
     for i in range(dim):
@@ -238,6 +231,14 @@ def compute_lj_coulombic_energy_forces(positions, sigma_hh, eps_hh, sigma_oh, ep
             separation_vector = compute_separation_vector_pbc_h2o(positions[i], positions[i + 1], positions[i + 2], size)
             r = np.linalg.norm(separation_vector)
 
+            # Define Lennard-Jones parameters for oxygen-hydrogen interaction
+            sigma_oh = 1.0  # Angstrom
+            eps_oh = 0.0  # kcal/mol
+
+            # Define Lennard-Jones parameters for hydrogen-hydrogen interaction
+            sigma_hh = 1.0 # Angstrom
+            eps_hh = 0.0 # kcal/mol
+
             # Select LJ and Coulomb parameters based on atom types
             epsilon = eps_hh if i % 3 == 0 and j % 3 == 0 else eps_oh
             sigma = sigma_hh if i % 3 == 0 and j % 3 == 0 else sigma_oh
@@ -261,60 +262,47 @@ def compute_lj_coulombic_energy_forces(positions, sigma_hh, eps_hh, sigma_oh, ep
             coulomb_force[j] -= coulomb_force_factor
 
     #print(total_lj_energy, total_coulomb_energy)
-    print(lj_force, coulomb_force)
+    #print(lj_force, coulomb_force)
     return(total_lj_energy, total_coulomb_energy, lj_force, coulomb_force)
 
-
-def tot_force(positions, bonded_force, lj_force, coulomb_force, bond_angle_force):
-    """
-    Total forces
-    """
-    total_force = np.zeros_like(positions)
-    total_force += bonded_force + lj_force + coulomb_force + bond_angle_force
-    #print(total_force)
-    return(total_force)
-
-
 def tot_energy(velocities, m, bonded_energy, total_lj_energy, total_coulomb_energy, angle_energy):
+    """
+    Total Energy
+    """
     v_sq = velocities ** 2
     v_sq_sum_d = np.sum(v_sq, axis = 1) # summing over dimension
     v_sq_sum_p = np.sum(v_sq_sum_d, axis=0) #summing over particles
     KE = 0.5 * m * v_sq_sum_p
-    total_energy =  KE + bonded_energy + total_lj_energy + total_coulomb_energy + angle_energy
+    total_energy = KE + bonded_energy + total_lj_energy + total_coulomb_energy + angle_energy
     #print(total_energy)
     return total_energy
 
-def leap_frog(oxygen_position, hydrogen_position1, hydrogen_position2, oxygen_velocity, hydrogen_velocity1, hydrogen_velocity2, mass_oxygen, mass_hydrogen, dt, size):
+def velocity_verlet(positions, velocities, bonded_force, bond_angle_force, lj_force, coulomb_force,  m, dt):
     """
-    oxygen_position = position of the oxygen atom
-    hydrogen_position1 = position of the first hydrogen atom
-    hydrogen_position2 = position of the second hydrogen atom
-    forces = force_on_water_molecule
-    m_oxygen = mass_of_oxygen
-    m_hydrogen = mass_of_hydrogen
-    dt = time_step
-    size = size_of_box
+    velocity-verlet algorithm
     """
-    # Update oxygen atom's velocity and position
-    oxygen_velocity += (forces * dt / mass_oxygen)
-    oxygen_position += oxygen_velocity * dt
+    forces = np.zeros_like(positions)
+    # Update velocities using Verlet integration
+    velocities += 0.5 * (bonded_force / m) * dt
+    velocities += 0.5 * (bond_angle_force / m) * dt
+    velocities += 0.5 * (lj_force / m) * dt
+    velocities += 0.5 * (coulomb_force / m) * dt
 
-    # Update hydrogen atoms' velocity and position
-    hydrogen_velocity1 += (forces * dt / mass_hydrogen)
-    hydrogen_velocity2 += (forces * dt / mass_hydrogen)
-    hydrogen_position1 += hydrogen_velocity1 * dt
-    hydrogen_position2 += hydrogen_velocity1 * dt
+    # Update positions using updated velocities
+    positions += velocities * dt
 
-    # Wrap atom positions into the central box (box is from 0 to size in each dimension)
-    positions = [oxygen_position, hydrogen_position1, hydrogen_position2]
-    velocities = [oxygen_velocity, hydrogen_velocity1, hydrogen_velocity2]
-   
-    for i in range(3):
-        for j in range(3):
-            if positions[i][j] < 0:
-                positions[i][j] += size
-            elif positions[i][j] > size:
-                positions[i][j] -= size
+    # Recalculate forces based on the new positions
+    bonded_energy, bonded_force = compute_bonded_forces_energy(positions, kbond, req, size, forces)
+    angle_energy, bond_angle_force = compute_bond_angle_forces_energy(positions, k_angle, theta_eq, forces)
+    total_lj_energy, total_coulomb_energy, lj_force, coulomb_force = compute_lj_coulombic_energy_forces(positions, sigma_hh, eps_hh, sigma_oh, eps_oh, q_oxygen, q_hydrogen, size, forces)
+
+    # Update velocities again using Verlet integration
+    velocities += 0.5 * (bonded_force / m) * dt
+    velocities += 0.5 * (bond_angle_force / m) * dt
+    velocities += 0.5 * (lj_force / m) * dt
+    velocities += 0.5 * (coulomb_force / m) * dt
+
+    #print(positions, velocities)
     return positions, velocities
 
 # Trajectory frame
@@ -337,7 +325,16 @@ N = 1  # Number of water molecules (3 particles each)
 size = 10.0  # Angstrom
 T = 300
 step = 100000
-delta_step = 100
-dt = 0.0001
-sim = run_md(N, size, T, step, delta_step, dt)
-~                                                             
+delta_step = 10
+dt = 0.00001
+kbond = 450 # kcal/mole/Å**2
+sigma_hh = 1.0 # Angstrom
+eps_hh = 0.0 # kcal/mol
+sigma_oh = 1.0 # Angstrom
+eps_oh = 0.0 # kcal/mol
+q_hydrogen = 0.417 # e
+q_oxygen = -0.834 # e
+req = 0.9572 # Angstrom
+k_angle = 55 # #kcal/mol/rad-2
+theta_eq = 1.82 #radian
+sim = run_md(N, size, T, step, delta_step, dt, kbond, sigma_hh, eps_hh, sigma_oh, eps_oh, q_hydrogen, q_oxygen, req, k_angle, theta_eq)
