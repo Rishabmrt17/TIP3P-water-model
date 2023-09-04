@@ -2,7 +2,7 @@ import numpy as np
 
 def run_md(N, size, T, step, delta_step, dt, kbond, sigma_hh, eps_hh, sigma_oh, eps_oh, q_hydrogen, q_oxygen, req, k_angle, theta_eq):
     """
-    MD program using leap-frog algorithm for TIP3P modified  water model
+    MD program using velocity-verlet algorithm for TIP3P modified  water model
     N = number_of_water_molecules
     size = size_of_the_box
     T = temperature
